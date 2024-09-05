@@ -15,6 +15,7 @@ use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
+use graph::slog::info;
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -298,7 +299,7 @@ pub struct Chain {
     reorg_threshold: BlockNumber,
     polling_ingestor_interval: Duration,
     pub is_ingestible: bool,
-    block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
+    pub block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     block_refetcher: Arc<dyn BlockRefetcher<Self>>,
     adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
     runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,
@@ -451,6 +452,7 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
+        info!(&logger, "block_pointer_from_number"; "number" => number);
         match self.client.as_ref() {
             ChainClient::Firehose(endpoints) => endpoints
                 .endpoint()
