@@ -51,3 +51,92 @@ fn log_to_log_data(log: &Log) -> Result<LogData> {
 
     LogData::new(topics, data).context("log has an invalid number of topics")
 }
+
+#[cfg(test)]
+mod tests {
+    use alloy::dyn_abi::DynSolValue;
+    use alloy::primitives::U256;
+
+    use super::*;
+
+    fn make_log(topics: &[[u8; 32]], data: Vec<u8>) -> Log {
+        Log {
+            address: [1; 20].into(),
+            topics: topics.iter().map(Into::into).collect(),
+            data: data.into(),
+            block_hash: None,
+            block_number: None,
+            transaction_hash: None,
+            transaction_index: None,
+            log_index: None,
+            transaction_log_index: None,
+            log_type: None,
+            removed: None,
+        }
+    }
+
+    #[test]
+    fn decode_log_no_topic_0() {
+        let event = Event::parse("event X(uint256 indexed a, bytes32 b)").unwrap();
+        let a = U256::from(10).to_be_bytes::<32>();
+        let b = DynSolValue::FixedBytes([10; 32].into(), 32).abi_encode();
+
+        let log = make_log(&[a], b);
+        let err = event.decode_log(&log).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "invalid log topic list length: expected 2 topics, got 1",
+        );
+    }
+
+    #[test]
+    fn decode_log_invalid_topic_0() {
+        let event = Event::parse("event X(uint256 indexed a, bytes32 b)").unwrap();
+        let a = U256::from(10).to_be_bytes::<32>();
+        let b = DynSolValue::FixedBytes([10; 32].into(), 32).abi_encode();
+
+        let log = make_log(&[[0; 32], a], b);
+        let err = event.decode_log(&log).unwrap_err();
+
+        assert!(err.to_string().starts_with("invalid event signature:"));
+    }
+
+    #[test]
+    fn decode_log_success() {
+        let event = Event::parse("event X(uint256 indexed a, bytes32 b)").unwrap();
+        let topic_0 = event.selector().0;
+        let a = U256::from(10).to_be_bytes::<32>();
+        let b = DynSolValue::FixedBytes([10; 32].into(), 32).abi_encode();
+
+        let log = make_log(&[topic_0, a], b);
+        let resp = event.decode_log(&log).unwrap();
+
+        assert_eq!(
+            resp,
+            vec![
+                DynSolParam {
+                    name: "a".to_owned(),
+                    value: DynSolValue::Uint(U256::from(10), 256),
+                },
+                DynSolParam {
+                    name: "b".to_owned(),
+                    value: DynSolValue::FixedBytes([10; 32].into(), 32),
+                }
+            ],
+        );
+    }
+
+    #[test]
+    fn decode_log_too_many_topics() {
+        let event = Event::parse("event X(uint256 indexed a, bytes32 b)").unwrap();
+        let topic_0 = event.selector().0;
+        let a = U256::from(10).to_be_bytes::<32>();
+        let b = DynSolValue::FixedBytes([10; 32].into(), 32).abi_encode();
+
+        let log = make_log(&[topic_0, a, a, a, a], b);
+        let err = event.decode_log(&log).unwrap_err();
+
+        assert_eq!(err.to_string(), "log has an invalid number of topics");
+    }
+}
